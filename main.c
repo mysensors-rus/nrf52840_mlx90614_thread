@@ -65,18 +65,17 @@
 #define SCHED_QUEUE_SIZE                     32
 #define SCHED_EVENT_DATA_SIZE                APP_TIMER_SCHED_EVENT_DATA_SIZE
 
-static const nrf_drv_twi_t m_twi_master = NRF_DRV_TWI_INSTANCE(0);
+#define BH1750_TWI_ADDRESS 0x23
 
-uint32_t hdc1080_measurement_delay = 0;
+static const nrf_drv_twi_t m_twi_master = NRF_DRV_TWI_INSTANCE(0);
 
 APP_TIMER_DEF(m_voltage_timer_id);
 APP_TIMER_DEF(m_internal_temperature_timer_id);
-APP_TIMER_DEF(m_hdc1080_timer_id);
-APP_TIMER_DEF(m_hdc1080_measurement_delay_timer_id);
+APP_TIMER_DEF(m_bh1750_timer_id);
+APP_TIMER_DEF(m_bh1750_measurement_delay_timer_id);
 
 sensor_subscription sensor_subscriptions[] = {
-	{ .sensor_name = 'T', .sent_value = 0, .current_value = 0, .reportable_change = 0, .disable_reporting = true, .read_only = true, .initialized = false, .report_interval = 10000, .last_sent_at = 0, .set_value_handler = NULL, },
-	{ .sensor_name = 'H', .sent_value = 0, .current_value = 0, .reportable_change = 0, .disable_reporting = true, .read_only = true, .initialized = false, .report_interval = 10000, .last_sent_at = 0, .set_value_handler = NULL, },
+	{ .sensor_name = 'L', .sent_value = 0, .current_value = 0, .reportable_change = 0, .disable_reporting = true, .read_only = true, .initialized = false, .report_interval = 10000, .last_sent_at = 0, .set_value_handler = NULL, },
 	{ .sensor_name = 'v', .sent_value = 0, .current_value = 0, .reportable_change = 0, .disable_reporting = true, .read_only = true, .initialized = false, .report_interval = 10000, .last_sent_at = 0, .set_value_handler = NULL, },
 //	{ .sensor_name = 'V', .sent_value = 0, .current_value = 0, .reportable_change = 0, .disable_reporting = true, .read_only = true, .initialized = false, .report_interval = 10000, .last_sent_at = 0, .set_value_handler = NULL, },
 	{ .sensor_name = 't', .sent_value = 0, .current_value = 0, .reportable_change = 0, .disable_reporting = true, .read_only = true, .initialized = false, .report_interval = 10000, .last_sent_at = 0, .set_value_handler = NULL, },
@@ -201,29 +200,30 @@ static void internal_temperature_timeout_handler(void *p_context)
 	}
 }
 
-static void hdc1080_measurement_delay_timeout_handler(void *p_context)
+static void bh1750_measurement_delay_timeout_handler(void *p_context)
 {
 	UNUSED_PARAMETER(p_context);
 
-	uint8_t resp[4];
+	uint8_t resp[2];
 
-	ret_code_t err_code = nrf_drv_twi_rx(&m_twi_master, 0x40, resp, sizeof(resp));
+	ret_code_t err_code = nrf_drv_twi_rx(&m_twi_master, BH1750_TWI_ADDRESS, resp, sizeof(resp));
 	APP_ERROR_CHECK(err_code);
 
-	set_sensor_value('T', (resp[0] << 8) + resp[1], false);
-	set_sensor_value('H', (resp[2] << 8) + resp[3], false);
+	NRF_LOG_INFO("Lux: %d\r\n", (resp[0]<<8) + resp[1]);
+
+	set_sensor_value('L', (resp[0] << 8) + resp[1], false);
 }
 
-static void hdc1080_timeout_handler(void *p_context)
+static void bh1750_timeout_handler(void *p_context)
 {
 	UNUSED_PARAMETER(p_context);
 
-	uint8_t data[1] = {0};
+	uint8_t data[1] = {0x21};
 
-	ret_code_t err_code = nrf_drv_twi_tx(&m_twi_master, 0x40, data, sizeof(data), false);
+	ret_code_t err_code = nrf_drv_twi_tx(&m_twi_master, BH1750_TWI_ADDRESS, data, sizeof(data), false);
 	APP_ERROR_CHECK(err_code);
 
-	err_code = app_timer_start(m_hdc1080_measurement_delay_timer_id, APP_TIMER_TICKS(25), NULL);
+	err_code = app_timer_start(m_bh1750_measurement_delay_timer_id, APP_TIMER_TICKS(250), NULL);
 	APP_ERROR_CHECK(err_code);
 }
 
@@ -299,13 +299,15 @@ static void timer_init(void)
 	error_code = app_timer_create(&m_internal_temperature_timer_id, APP_TIMER_MODE_REPEATED, internal_temperature_timeout_handler);
 	APP_ERROR_CHECK(error_code);
 
-	// hdc1080 timer
-	error_code = app_timer_create(&m_hdc1080_timer_id, APP_TIMER_MODE_REPEATED, hdc1080_timeout_handler);
+	// bh1750 timer
+	error_code = app_timer_create(&m_bh1750_timer_id, APP_TIMER_MODE_REPEATED, bh1750_timeout_handler);
 	APP_ERROR_CHECK(error_code);
 
-	// hdc1080 measurement delay timer
-	error_code = app_timer_create(&m_hdc1080_measurement_delay_timer_id, APP_TIMER_MODE_SINGLE_SHOT, hdc1080_measurement_delay_timeout_handler);
+	// bh17501080 measurement delay timer
+	error_code = app_timer_create(&m_bh1750_measurement_delay_timer_id, APP_TIMER_MODE_SINGLE_SHOT, bh1750_measurement_delay_timeout_handler);
 	APP_ERROR_CHECK(error_code);
+
+
 }
 
 static void thread_instance_init(void)
@@ -322,40 +324,10 @@ static void thread_instance_init(void)
 	thread_state_changed_callback_set(thread_state_changed_callback);
 }
 
-int8_t user_i2c_read(uint8_t dev_addr, uint8_t reg_addr, uint8_t *reg_data, uint32_t len)
+
+static bool init_bh1750()
 {
-	ret_code_t err_code = nrf_drv_twi_tx(&m_twi_master, dev_addr, &reg_addr, 1, false);
-
-	APP_ERROR_CHECK(err_code);
-
-	err_code = nrf_drv_twi_rx(&m_twi_master, dev_addr, reg_data, len);
-
-	APP_ERROR_CHECK(err_code);
-
-	return err_code;
-}
-
-int8_t user_i2c_write(uint8_t dev_addr, uint8_t reg_addr, const uint8_t *reg_data, uint32_t len)
-{
-	uint8_t write_data[256];
-
-	if (len > sizeof(write_data) - 1)
-		return 1;
-
-	write_data[0] = reg_addr;
-
-	memcpy(&write_data[1], reg_data, len);
-
-	ret_code_t err_code = nrf_drv_twi_tx(&m_twi_master, dev_addr, write_data, len + 1, false);
-
-	APP_ERROR_CHECK(err_code);
-
-	return 0;
-}
-
-static bool init_hdc1080()
-{
-	nrf_delay_us(15000); // 15 ms startup time
+	nrf_delay_us(250); // 250 mcs startup time
 
 	return true;
 }
@@ -389,7 +361,7 @@ int main(int argc, char * argv[])
 	adc_configure();
 	nrf_temp_init();
 	twi_init();
-	init_hdc1080();
+	init_bh1750();	
 
 	uint32_t error_code = bsp_init(BSP_INIT_LEDS | BSP_INIT_BUTTONS, bsp_event_handler);
 	APP_ERROR_CHECK(error_code);
@@ -404,7 +376,7 @@ int main(int argc, char * argv[])
 	err_code = app_timer_start(m_internal_temperature_timer_id, APP_TIMER_TICKS(INTERNAL_TEMPERATURE_TIMER_INTERVAL), NULL);
 	APP_ERROR_CHECK(err_code);
 
-	err_code = app_timer_start(m_hdc1080_timer_id, APP_TIMER_TICKS(HDC1080_TIMER_INTERVAL), NULL);
+	err_code = app_timer_start(m_bh1750_timer_id, APP_TIMER_TICKS(BH1750_TIMER_INTERVAL), NULL);
 	APP_ERROR_CHECK(err_code);
 
 	while (true) {
