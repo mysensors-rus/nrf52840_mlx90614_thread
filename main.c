@@ -303,7 +303,7 @@ static void timer_init(void)
 	error_code = app_timer_create(&m_bh1750_timer_id, APP_TIMER_MODE_REPEATED, bh1750_timeout_handler);
 	APP_ERROR_CHECK(error_code);
 
-	// bh17501080 measurement delay timer
+	// bh1750 measurement delay timer
 	error_code = app_timer_create(&m_bh1750_measurement_delay_timer_id, APP_TIMER_MODE_SINGLE_SHOT, bh1750_measurement_delay_timeout_handler);
 	APP_ERROR_CHECK(error_code);
 
