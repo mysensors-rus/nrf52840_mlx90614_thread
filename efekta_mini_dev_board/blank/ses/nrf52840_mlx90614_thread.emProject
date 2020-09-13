@@ -1,6 +1,6 @@
 <!DOCTYPE CrossStudio_Project_File>
-<solution Name="nrf52840_bh1750_thread" target="8" version="2">
-  <project Name="nrf52840_bh1750_thread">
+<solution Name="nrf52840_mlx90614_thread" target="8" version="2">
+  <project Name="nrf52840_mlx90614_thread">
     <configuration
       Name="Common"
       arm_architecture="v7EM"

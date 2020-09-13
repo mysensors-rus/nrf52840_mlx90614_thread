@@ -1,9 +1,9 @@
-Thread (OpenThread) firmware for nrf52840-based bh1750 sensor node.
+Thread (OpenThread) firmware for nrf52840-based mlx90614 sensor node.
 
 Steps to compile:
 
 1) download and unpack Thread SDK 4.1.0
 2) open Tools => Options => Building => Global Macros settings in Segger Embedded Studio and fill `PATH_TO_SDK` variable with path to Thread SDK without trailing slash, i.e. `PATH_TO_SDK=C:/thread_sdk_410`
-3) open poject file `./efekta_mini_dev_board/blank/ses/nrf52840_bh1750_thread.emProject` in Segger Embedded Studio
+3) open poject file `./efekta_mini_dev_board/blank/ses/nrf52840_mlx90614_thread.emProject` in Segger Embedded Studio
 4) сhange project settings if necessary (settings.h file)
 5) compile and flash firmware

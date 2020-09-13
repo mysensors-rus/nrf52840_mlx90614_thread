@@ -65,17 +65,17 @@
 #define SCHED_QUEUE_SIZE                     32
 #define SCHED_EVENT_DATA_SIZE                APP_TIMER_SCHED_EVENT_DATA_SIZE
 
-#define BH1750_TWI_ADDRESS 0x23
+#define mlx90614_TWI_ADDRESS 0x5A
 
 static const nrf_drv_twi_t m_twi_master = NRF_DRV_TWI_INSTANCE(0);
 
 APP_TIMER_DEF(m_voltage_timer_id);
 APP_TIMER_DEF(m_internal_temperature_timer_id);
-APP_TIMER_DEF(m_bh1750_timer_id);
-APP_TIMER_DEF(m_bh1750_measurement_delay_timer_id);
+APP_TIMER_DEF(m_mlx90614_timer_id);
+APP_TIMER_DEF(m_mlx90614_measurement_delay_timer_id);
 
 sensor_subscription sensor_subscriptions[] = {
-	{ .sensor_name = 'L', .sent_value = 0, .current_value = 0, .reportable_change = 0, .disable_reporting = true, .read_only = true, .initialized = false, .report_interval = 10000, .last_sent_at = 0, .set_value_handler = NULL, },
+	{ .sensor_name = 'T', .sent_value = 0, .current_value = 0, .reportable_change = 0, .disable_reporting = true, .read_only = true, .initialized = false, .report_interval = 10000, .last_sent_at = 0, .set_value_handler = NULL, },
 	{ .sensor_name = 'v', .sent_value = 0, .current_value = 0, .reportable_change = 0, .disable_reporting = true, .read_only = true, .initialized = false, .report_interval = 10000, .last_sent_at = 0, .set_value_handler = NULL, },
 //	{ .sensor_name = 'V', .sent_value = 0, .current_value = 0, .reportable_change = 0, .disable_reporting = true, .read_only = true, .initialized = false, .report_interval = 10000, .last_sent_at = 0, .set_value_handler = NULL, },
 	{ .sensor_name = 't', .sent_value = 0, .current_value = 0, .reportable_change = 0, .disable_reporting = true, .read_only = true, .initialized = false, .report_interval = 10000, .last_sent_at = 0, .set_value_handler = NULL, },
@@ -200,31 +200,50 @@ static void internal_temperature_timeout_handler(void *p_context)
 	}
 }
 
-static void bh1750_measurement_delay_timeout_handler(void *p_context)
+// static void mlx90614_measurement_delay_timeout_handler(void *p_context)
+// {
+// 	UNUSED_PARAMETER(p_context);
+
+// 	uint8_t resp[3];
+
+// 	ret_code_t err_code = nrf_drv_twi_rx(&m_twi_master, mlx90614_TWI_ADDRESS, resp, sizeof(resp));
+// 	APP_ERROR_CHECK(err_code);
+
+// 	NRF_LOG_INFO("Lux: %d\r\n", (resp[0]<<8) + resp[1]);
+
+// 	set_sensor_value('L', (resp[0] << 8) + resp[1], false);
+// }
+
+static void mlx90614_timeout_handler(void *p_context)
 {
 	UNUSED_PARAMETER(p_context);
 
-	uint8_t resp[2];
+	//uint8_t data[1] = {0x06};
+	uint8_t data[1] = {0x07};
 
-	ret_code_t err_code = nrf_drv_twi_rx(&m_twi_master, BH1750_TWI_ADDRESS, resp, sizeof(resp));
+	ret_code_t err_code = nrf_drv_twi_tx(&m_twi_master, mlx90614_TWI_ADDRESS, data, sizeof(data), true);
 	APP_ERROR_CHECK(err_code);
 
-	NRF_LOG_INFO("Lux: %d\r\n", (resp[0]<<8) + resp[1]);
+	// err_code = app_timer_start(m_mlx90614_measurement_delay_timer_id, APP_TIMER_TICKS(5), NULL);
+	// APP_ERROR_CHECK(err_code);
 
-	set_sensor_value('L', (resp[0] << 8) + resp[1], false);
-}
+	uint8_t resp[3];
 
-static void bh1750_timeout_handler(void *p_context)
-{
-	UNUSED_PARAMETER(p_context);
-
-	uint8_t data[1] = {0x21};
-
-	ret_code_t err_code = nrf_drv_twi_tx(&m_twi_master, BH1750_TWI_ADDRESS, data, sizeof(data), false);
+	err_code = nrf_drv_twi_rx(&m_twi_master, mlx90614_TWI_ADDRESS, resp, sizeof(resp));
 	APP_ERROR_CHECK(err_code);
 
-	err_code = app_timer_start(m_bh1750_measurement_delay_timer_id, APP_TIMER_TICKS(250), NULL);
-	APP_ERROR_CHECK(err_code);
+  float temp;
+
+  temp = (uint16_t)(resp[1] << 8) + resp[0];
+  temp *= .02;
+  temp -= 273.15;
+
+  set_sensor_value('T', temp*100, false);
+
+  //NRF_LOG_INFO("Temp: %f\r\n", temp);
+
+  NRF_LOG_INFO("TEMP: " NRF_LOG_FLOAT_MARKER " C", NRF_LOG_FLOAT((float)temp));
+
 }
 
 static void bsp_event_handler(bsp_event_t event)
@@ -299,13 +318,13 @@ static void timer_init(void)
 	error_code = app_timer_create(&m_internal_temperature_timer_id, APP_TIMER_MODE_REPEATED, internal_temperature_timeout_handler);
 	APP_ERROR_CHECK(error_code);
 
-	// bh1750 timer
-	error_code = app_timer_create(&m_bh1750_timer_id, APP_TIMER_MODE_REPEATED, bh1750_timeout_handler);
+	// mlx90614 measurement timer
+	error_code = app_timer_create(&m_mlx90614_timer_id, APP_TIMER_MODE_REPEATED, mlx90614_timeout_handler);
 	APP_ERROR_CHECK(error_code);
 
-	// bh1750 measurement delay timer
-	error_code = app_timer_create(&m_bh1750_measurement_delay_timer_id, APP_TIMER_MODE_SINGLE_SHOT, bh1750_measurement_delay_timeout_handler);
-	APP_ERROR_CHECK(error_code);
+	// mlx90614 measurement delay timer
+	// error_code = app_timer_create(&m_mlx90614_measurement_delay_timer_id, APP_TIMER_MODE_SINGLE_SHOT, mlx90614_measurement_delay_timeout_handler);
+	// APP_ERROR_CHECK(error_code);
 
 
 }
@@ -325,9 +344,9 @@ static void thread_instance_init(void)
 }
 
 
-static bool init_bh1750()
+static bool init_mlx90614()
 {
-	nrf_delay_us(250); // 250 mcs startup time
+//	nrf_delay_us(250); // 250 mcs startup time
 
 	return true;
 }
@@ -361,7 +380,7 @@ int main(int argc, char * argv[])
 	adc_configure();
 	nrf_temp_init();
 	twi_init();
-	init_bh1750();	
+	//init_mlx90614();	
 
 	uint32_t error_code = bsp_init(BSP_INIT_LEDS | BSP_INIT_BUTTONS, bsp_event_handler);
 	APP_ERROR_CHECK(error_code);
@@ -376,7 +395,7 @@ int main(int argc, char * argv[])
 	err_code = app_timer_start(m_internal_temperature_timer_id, APP_TIMER_TICKS(INTERNAL_TEMPERATURE_TIMER_INTERVAL), NULL);
 	APP_ERROR_CHECK(err_code);
 
-	err_code = app_timer_start(m_bh1750_timer_id, APP_TIMER_TICKS(BH1750_TIMER_INTERVAL), NULL);
+	err_code = app_timer_start(m_mlx90614_timer_id, APP_TIMER_TICKS(mlx90614_TIMER_INTERVAL), NULL);
 	APP_ERROR_CHECK(err_code);
 
 	while (true) {

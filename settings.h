@@ -1,13 +1,13 @@
 #ifndef __SETTINGS__H__
 #define __SETTINGS__H__
 
-#define INFO_FIRMWARE_TYPE                   "bh1750"
+#define INFO_FIRMWARE_TYPE                   "mlx90614"
 #define INFO_FIRMWARE_VERSION                "1.0.0"
 
 #define SUBSCRIPTION_TIMER_INTERVAL          500
 #define INTERNAL_TEMPERATURE_TIMER_INTERVAL  1000
 #define VOLTAGE_TIMER_INTERVAL               1000
-#define BH1750_TIMER_INTERVAL                5000
+#define mlx90614_TIMER_INTERVAL                5000
 
 #define DEFAULT_POLL_PERIOD                  120000
 #define DEFAULT_POLL_PERIOD_FAST             50
